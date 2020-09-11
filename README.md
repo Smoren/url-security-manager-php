@@ -1,10 +1,99 @@
-# query-relation-manager
-Реализует функционал получения данных из БД с отношениями "один к одному" и "один ко многим" с использованием одного 
-запроса к БД, а также с учетом всех ограничений в запросе при получении отношений.
+# url-security-manager
+Class for building, parsing, signing, signature checking, encrypting and decrypting URLs.
 
-Может быть использован в любой ORM на php, потенциально совместим с любой реляционной СУБД.
+### Install to your project
+```shell script
+composer require smoren/url-security-manager
+``` 
 
-Включает в себя пример реализации для чистого PDO без ORM.
+### Unit testing
+```shell script
+composer install
+./vendor/bin/codecept build
+./vendor/bin/codecept run unit tests/unit
+```
 
-Реализация для работы с **ActiveRecord** в виде расширения для **Yii2**:
-https://github.com/Smoren/yii2-query-relation-manager
+### Demo
+##### Signing
+```php
+use Smoren\UrlSecurityManager\UrlSecurityManager;
+
+$inputUrl = 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4';
+$secretKey = 'fvd76df89g7fdg89';
+
+// Let's sign some url with our secret key to send signed request to receiver
+$usmSender = UrlSecurityManager::parse($inputUrl)
+    // signature will be stored as value of query param "sign"
+    // only query aparms from array (2nd argument) will be signed
+    ->setSignParams('sign', ['p1', 'p2', 'p3'])
+    ->setSecretKey($secretKey) // giving secret key for signing
+    ->sign(); // create signature
+
+$signedUrl = $usmSender->stringify();
+echo $signedUrl;
+// http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4&sign=5342af44ed716002a81a2872734729f5
+
+// Now we will try to check the signature of URL:
+$usmReceiver = UrlSecurityManager::parse($signedUrl)
+    ->setSignParams('sign', ['p1', 'p2', 'p3'])
+    ->setSecretKey($secretKey);
+$usmReceiver->check(); // will be executed without WrongSignatureException
+
+$usmReceiver
+    ->setSignParams('sign', ['p1', 'p2', 'p3'])
+    ->setSecretKey('123');
+$usmReceiver->check(); // will throw WrongSignatureException
+
+$usmSender = UrlSecurityManager::parse($inputUrl)
+    ->setSignParams('sign') // all query params will be signed
+    ->setSecretKey($secretKey)
+    ->sign();
+$signedUrl = $usmSender->stringify();
+echo $signedUrl;
+// http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4&sign=50489186458519f9f141e616dc02af73
+```
+
+##### Encrypting/decrypting
+```php
+use Smoren\UrlSecurityManager\UrlSecurityManager;
+
+$inputUrl = 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4';
+$secretKey = 'fvd76df89g7fdg89';
+
+// Let's encrypt url with our secret key to send some secret data to receiver:
+$usmSender = UrlSecurityManager::parse($inputUrl)
+    // encrypted string will be stored as value of query param "sign"
+    // all query params will be encrypted
+    ->setEncryptParams('encrypted') 
+    ->setSecretKey($secretKey)
+    ->encrypt(); // encrypting data
+
+$encryptedUrl = $usmSender->stringify();
+echo $encryptedUrl;
+// someting like this:
+// http://localhost:8080/test/path?encrypted=X4oxVda3u%2FD2NX...
+
+// Now we will try to decrypt received secret data:
+$usmReceiver = UrlSecurityManager::parse($encryptedUrl)
+    ->setEncryptParams('encrypted')
+    ->setSecretKey($secretKey)
+    ->decrypt();
+
+$decryptedUrl = $usmReceiver->stringify();
+echo $decryptedUrl;
+// http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4
+
+$usmSender->decrypt();
+
+// encrypt only query params: p1, p2
+$usmSender->setEncryptParams('encrypted', ['p1', 'p2']);
+$usmSender->encrypt();
+
+echo $usmSender->stringify();
+// something like this:
+// http://localhost:8080/test/path?p3=3&p4=4&encrypted=CTNdFXZDlBwYwwvQV2L8mGjQg5YydC3...
+
+$usmSender->decrypt();
+echo $usmSender->stringify();
+// http://localhost:8080/test/path?p3=3&p4=4&p1=1&p2=2
+```

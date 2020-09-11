@@ -5,10 +5,10 @@ namespace Smoren\UrlSecurityManager\Exceptions;
 
 
 /**
- * Class UrlSecurityManagerException
+ * Class DecryptException
  * @package Smoren\UrlSecurityManager\Exceptions
  */
-class UrlSecurityManagerException extends \Exception
+class DecryptException extends \Exception
 {
 
 }

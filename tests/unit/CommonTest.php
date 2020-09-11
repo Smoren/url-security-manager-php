@@ -6,6 +6,7 @@ use app\models\Address;
 use app\models\City;
 use app\models\Comment;
 use app\models\Place;
+use Smoren\UrlSecurityManager\Exceptions\DecryptException;
 use Smoren\UrlSecurityManager\Exceptions\UrlSecurityManagerException;
 use Smoren\UrlSecurityManager\Exceptions\WrongSignatureException;
 use Smoren\UrlSecurityManager\UrlSecurityManager;
@@ -16,18 +17,6 @@ use yii\helpers\ArrayHelper;
 
 class CommonTest extends \Codeception\Test\Unit
 {
-    public function testFirst()
-    {
-        $sk = 'asdasdasd';
-        $i = serialize(['a' => 1, 'b' => 2, 'c' => 3]);
-        $method = 'AES-256-CTR';
-        $i = 'Testing...';
-        $a = openssl_encrypt($i, $method, $sk, OPENSSL_RAW_DATA, openssl_random_pseudo_bytes(openssl_cipher_iv_length($method)));
-        $b = openssl_decrypt($a, $method, $sk, OPENSSL_RAW_DATA);
-        $c = 1;
-
-    }
-
     /**
      * @throws UrlSecurityManagerException
      * @throws WrongSignatureException
@@ -47,13 +36,15 @@ class CommonTest extends \Codeception\Test\Unit
             ->setSecretKey($secretKey);
         $b->check();
     }
+
     /**
      * @throws UrlSecurityManagerException
      * @throws WrongSignatureException
+     * @throws DecryptException
      */
     public function testEncrypting()
     {
-        $secretKey = 'dfgfd4566fdgd';
+        $secretKey = 'fvd76df89g7fdg89';
         $inputUrl = 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4';
         $a = UrlSecurityManager::parse($inputUrl)
             ->setSignParams('sign', ['p1', 'p2', 'p3'])
@@ -65,7 +56,7 @@ class CommonTest extends \Codeception\Test\Unit
         $signedUrl = $a->stringify();
         $encryptedUrl = $a->encrypt()->stringify();
         $decryptedUrl = $a->decrypt()->stringify();
-        $this->assertSame($signedUrl, $decryptedUrl);
+        $this->assertSameParams($signedUrl, $decryptedUrl);
 
         $b = UrlSecurityManager::parse($encryptedUrl)
             ->setEncryptParams('encrypted')
@@ -74,14 +65,200 @@ class CommonTest extends \Codeception\Test\Unit
             ->setSignParams('sign', ['p1', 'p2', 'p3']);
 
         $b->check();
-        $url = $b->stringify();
+        $this->assertSameParams($signedUrl, $b->stringify());
+    }
 
-        $c = 1;
+    /**
+     * @throws UrlSecurityManagerException
+     * @throws WrongSignatureException
+     * @throws DecryptException
+     */
+    public function testErrors()
+    {
+        $secretKey = 'dfgfd4566fdgd';
+        $inputUrl = 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4';
+        $a = UrlSecurityManager::parse($inputUrl)
+            ->setSignParams('sign', ['p1', 'p2', 'p3'])
+            ->setEncryptParams('encrypted')
+            ->setSecretKey($secretKey)
+            ->sign();
+        $a->check();
 
-//        $url = $a->stringify();
-//        $b = UrlSecurityManager::parse($url)
-//            ->setSignParams(['asd', 'fgh'], 'sign')
-//            ->setSecretKey($secretKey);
-//        $b->check();
+        $a->setSecretKey('asd');
+        try {
+            $a->check();
+            $this->assertTrue(false);
+        } catch(WrongSignatureException $e) {}
+
+        $a->setSecretKey($secretKey);
+        $a->check();
+
+        $a->encrypt();
+        try {
+            $a->check();
+            $this->assertTrue(false);
+        } catch(UrlSecurityManagerException $e) {}
+        $a->decrypt();
+        $a->check();
+
+        $params = $a->getParams();
+        $params['p1'] = 111;
+        $a->setParams($params);
+        try {
+            $a->check();
+            $this->assertTrue(false);
+        } catch(WrongSignatureException $e) {}
+
+        $a->encrypt();
+        $a->setSecretKey('aaa');
+
+        try {
+            $a->decrypt();
+            $this->assertTrue(false);
+        } catch(DecryptException $e) {}
+
+        $a->setSecretKey($secretKey);
+        $a->decrypt();
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function testCipherMethods()
+    {
+        $availableMethods = openssl_get_cipher_methods();
+        $testingMethods = array_intersect(['aes-128-cbc', 'aes-128-ccm', 'aria-256-ccm'], $availableMethods);
+
+        foreach($testingMethods as $method) {
+            try {
+                $secretKey = 'dfgfd4566fdgd';
+                $inputUrl = 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4';
+                $a = UrlSecurityManager::parse($inputUrl)
+                    ->setCipherMethod($method)
+                    ->setEncryptParams('encrypted')
+                    ->setSecretKey($secretKey);
+
+                $b = UrlSecurityManager::parse($a->encrypt()->stringify())
+                    ->setEncryptParams('encrypted')
+                    ->setSecretKey($secretKey);
+
+                $this->assertSameParams($a->decrypt()->stringify(), $b->decrypt()->stringify());
+            } catch(\Exception $e) {
+                if(
+                    strpos($e->getMessage(), 'openssl_encrypt') !== false &&
+                    strpos($e->getMessage(), 'AEAD') !== false
+                ) {
+                    continue;
+                }
+
+                throw $e;
+            }
+        }
+
+
+        try {
+            $a->setCipherMethod('NonExistingCipherMethod');
+            $this->assertTrue(false);
+        } catch(UrlSecurityManagerException $e) {}
+    }
+
+    /**
+     * @throws UrlSecurityManagerException
+     * @throws WrongSignatureException
+     */
+    public function testDemoSigning()
+    {
+        $inputUrl = 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4';
+        $secretKey = 'fvd76df89g7fdg89';
+
+        // Let's sign some url with our secret key to send signed request to receiver
+        $usmSender = UrlSecurityManager::parse($inputUrl)
+            // signature will be stored as value of query param "sign"
+            // only query aparms from array (2nd argument) will be signed
+            ->setSignParams('sign', ['p1', 'p2', 'p3'])
+            ->setSecretKey($secretKey) // giving secret key for signing
+            ->sign(); // create signature
+
+        $signedUrl = $usmSender->stringify();
+        $this->assertSame($signedUrl, 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4&sign=5342af44ed716002a81a2872734729f5');
+
+        // Now we will try to check the signature of URL:
+        $usmReceiver = UrlSecurityManager::parse($signedUrl)
+            ->setSignParams('sign', ['p1', 'p2', 'p3'])
+            ->setSecretKey($secretKey);
+        $usmReceiver->check(); // will be executed without WrongSignatureException
+
+        $usmReceiver
+            ->setSignParams('sign', ['p1', 'p2', 'p3'])
+            ->setSecretKey('123');
+
+        try {
+            $usmReceiver->check(); // will throw WrongSignatureException
+        } catch(WrongSignatureException $e) {}
+
+        $usmSender = UrlSecurityManager::parse($inputUrl)
+            ->setSignParams('sign') // all query params will be signed
+            ->setSecretKey($secretKey)
+            ->sign();
+
+        $signedUrl = $usmSender->stringify();
+        $this->assertSame($signedUrl, 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4&sign=50489186458519f9f141e616dc02af73');
+    }
+
+    /**
+     * @throws DecryptException
+     * @throws UrlSecurityManagerException
+     */
+    public function testDemoEncrypting()
+    {
+        $inputUrl = 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4';
+        $secretKey = 'fvd76df89g7fdg89';
+
+        // Let's encrypt url with our secret key to send some secret data to receiver:
+        $usmSender = UrlSecurityManager::parse($inputUrl)
+            // encrypted string will be stored as value of query param "sign"
+            // all query params will be encrypted
+            ->setEncryptParams('encrypted')
+            ->setSecretKey($secretKey)
+            ->encrypt(); // encrypting data
+
+        $encryptedUrl = $usmSender->stringify();
+
+        // Now we will try to decrypt received secret data:
+        $usmReceiver = UrlSecurityManager::parse($encryptedUrl)
+            ->setEncryptParams('encrypted')
+            ->setSecretKey($secretKey)
+            ->decrypt();
+
+        $decryptedUrl = $usmReceiver->stringify();
+        $this->assertSame($decryptedUrl, 'http://localhost:8080/test/path?p1=1&p2=2&p3=3&p4=4');
+
+        $usmSender->decrypt();
+
+        // encrypt only query params: p1, p2
+        $usmSender->setEncryptParams('encrypted', ['p1', 'p2']);
+        $usmSender->encrypt();
+
+        $usmSender->decrypt();
+        $this->assertSame($usmSender->stringify(), 'http://localhost:8080/test/path?p3=3&p4=4&p1=1&p2=2');
+    }
+
+    /**
+     * @param string $lhs
+     * @param string $rhs
+     * @return $this
+     * @throws UrlSecurityManagerException
+     */
+    protected function assertSameParams(string $lhs, string $rhs): self
+    {
+        $lhs = UrlSecurityManager::parse($lhs)->getParams();
+        $rhs = UrlSecurityManager::parse($rhs)->getParams();
+
+        ksort($lhs);
+        ksort($rhs);
+
+        $this->assertSame($lhs, $rhs);
+
+        return $this;
     }
 }

@@ -3,25 +3,85 @@
 namespace Smoren\UrlSecurityManager;
 
 
+use Smoren\UrlSecurityManager\Exceptions\DecryptException;
 use Smoren\UrlSecurityManager\Exceptions\UrlSecurityManagerException;
 use Smoren\UrlSecurityManager\Exceptions\WrongSignatureException;
 
+
+/**
+ * Class for building, parsing, signing, signature checking, encrypting and decrypting URLs
+ * @package Smoren\UrlSecurityManager
+ */
 class UrlSecurityManager
 {
+    /**
+     * @var string URL scheme (e.g. http, https, ftp, ...)
+     */
     protected $scheme;
-    protected $host;
-    protected $port;
-    protected $user;
-    protected $pass;
-    protected $path;
-    protected $params;
-    protected $fieldsToSign;
-    protected $fieldsToEncrypt;
-    protected $signatureField;
-    protected $encryptedStringField;
-    protected $secretKey;
-    protected $signature;
 
+    /**
+     * @var string|null URL hostname
+     */
+    protected $host;
+
+    /**
+     * @var int|null URL port
+     */
+    protected $port;
+
+    /**
+     * @var string|null URL username (for basic auth)
+     */
+    protected $user;
+
+    /**
+     * @var string|null URL password (for basic auth)
+     */
+    protected $pass;
+
+    /**
+     * @var string URL path
+     */
+    protected $path;
+
+    /**
+     * @var array URL query params
+     */
+    protected $params;
+
+    /**
+     * @var string[] names of query params to sign
+     */
+    protected $fieldsToSign;
+
+    /**
+     * @var string[] names of query params to encrypt
+     */
+    protected $fieldsToEncrypt;
+
+    /**
+     * @var string|null name of query param of signature
+     */
+    protected $signatureField;
+
+    /**
+     * @var string|null name of query param of encrypted data
+     */
+    protected $encryptedStringField;
+
+    /**
+     * @var string|null secret key for signing/encrypting/decrypting
+     */
+    protected $secretKey;
+
+    /**
+     * @var string method of openssl encryption
+     */
+    protected $cipherMethod;
+
+    /**
+     * @var array map [scheme => port] of some popular protocols
+     */
     protected static $defaultProtocolPortMap = [
         'http' => 80,
         'https' => 443,
@@ -82,9 +142,6 @@ class UrlSecurityManager
 
         if($withQueryParams) {
             $params = $this->params;
-            if($this->signature !== null && $this->signatureField !== null) {
-                $params[$this->signatureField] = $this->signature;
-            }
             if(count($params)) {
                 $query = '?' . http_build_query($params);
             } else {
@@ -108,12 +165,13 @@ class UrlSecurityManager
      */
     public function sign(): self
     {
-        $this->signature = $this->genSignature();
+        $this->setSignature($this->genSignature());
 
         return $this;
     }
 
     /**
+     * Encrypting query params of URL
      * @return $this
      * @throws UrlSecurityManagerException
      */
@@ -142,8 +200,10 @@ class UrlSecurityManager
     }
 
     /**
+     * Decrypting query params of URL
      * @return $this
      * @throws UrlSecurityManagerException
+     * @throws DecryptException
      */
     public function decrypt(): self
     {
@@ -159,6 +219,10 @@ class UrlSecurityManager
             $this->decryptString($this->params[$this->encryptedStringField]),
             ['allowed_classes' => false]
         );
+
+        if($decryptedParams === false) {
+            throw new DecryptException('wrong secret key given');
+        }
 
         $encryptedFields = [];
         foreach($decryptedParams as $key => $val) {
@@ -182,7 +246,7 @@ class UrlSecurityManager
     {
         $signature = $this->genSignature();
 
-        if($signature !== $this->signature) {
+        if($signature !== $this->getSignature()) {
             throw new WrongSignatureException('signature is wrong');
         }
 
@@ -292,10 +356,6 @@ class UrlSecurityManager
         $this->fieldsToSign = $fieldsToSign;
         $this->signatureField = $signatureField;
 
-        if(isset($this->params[$signatureField])) {
-            $this->signature = $this->params[$signatureField];
-        }
-
         return $this;
     }
 
@@ -332,13 +392,34 @@ class UrlSecurityManager
     }
 
     /**
-     * Setting signature of URL
-     * @param string $signature signature value string
+     * Setting secret key for signing URL
+     * @param string $cipherMethod method of openssl encryption
      * @return $this
+     * @throws UrlSecurityManagerException
+     */
+    public function setCipherMethod(string $cipherMethod): self
+    {
+        if(!in_array($cipherMethod, openssl_get_cipher_methods(), true)) {
+            throw new UrlSecurityManagerException("cipher method '{$cipherMethod}' is not available");
+        }
+
+        $this->cipherMethod = $cipherMethod;
+        return $this;
+    }
+
+    /**
+     * Setting secret key for signing URL
+     * @param string $signature signature value
+     * @return $this
+     * @throws UrlSecurityManagerException
      */
     public function setSignature(string $signature): self
     {
-        $this->signature = $signature;
+        if($this->signatureField === null) {
+            throw new UrlSecurityManagerException('cannot set signature: signatureField not specified');
+        }
+        $this->params[$this->signatureField] = $signature;
+
         return $this;
     }
 
@@ -349,6 +430,23 @@ class UrlSecurityManager
     public function getParams(): array
     {
         return $this->params;
+    }
+
+    /**
+     * Getting signature of URL
+     * @return string
+     * @throws UrlSecurityManagerException
+     */
+    public function getSignature(): string
+    {
+        if($this->signatureField === null) {
+            throw new UrlSecurityManagerException('cannot get signature: no signatureField specified');
+        }
+        if(!isset($this->params[$this->signatureField])) {
+            throw new UrlSecurityManagerException("cannot get signature: key {$this->signatureField} found in query params");
+        }
+
+        return $this->params[$this->signatureField];
     }
 
     /**
@@ -370,7 +468,7 @@ class UrlSecurityManager
         $this->signatureField = null;
         $this->encryptedStringField = null;
         $this->secretKey = null;
-        $this->signature = null;
+        $this->cipherMethod = 'aes-128-cbc';
 
         if($urlData !== null) {
             foreach($urlData as $key => $val) {
@@ -403,11 +501,15 @@ class UrlSecurityManager
     /**
      * Getting string of URL params to sign
      * @return string string ready to sign
+     * @throws UrlSecurityManagerException
      */
     protected function getStringToSign(): string
     {
         $result = [];
         foreach($this->fieldsToSign as $field) {
+            if(!isset($this->params[$field])) {
+                throw new UrlSecurityManagerException("cannot get string to join: key '{$field}' not found in query params");
+            }
             $result[] = "{$field}_{$this->params[$field]}";
         }
 
@@ -421,11 +523,9 @@ class UrlSecurityManager
      */
     protected function encryptString(string $input): string
     {
-        $method   = 'aes-128-cbc';
-
-        $ivLen = openssl_cipher_iv_length($method);
+        $ivLen = openssl_cipher_iv_length($this->cipherMethod);
         $iv = openssl_random_pseudo_bytes($ivLen);
-        $cipherText = openssl_encrypt($input, $method, $this->secretKey, $options=OPENSSL_RAW_DATA, $iv);
+        $cipherText = openssl_encrypt($input, $this->cipherMethod, $this->secretKey, $options=OPENSSL_RAW_DATA, $iv);
         $hmac = hash_hmac('sha256', $cipherText, $this->secretKey, $as_binary=true);
 
         return base64_encode($iv.$hmac.$cipherText);
@@ -439,13 +539,12 @@ class UrlSecurityManager
     protected function decryptString(string $input): string
     {
         $c = base64_decode($input);
-        $method   = 'aes-128-cbc';
-
-        $ivLen = openssl_cipher_iv_length($method);
+        $ivLen = openssl_cipher_iv_length($this->cipherMethod);
         $iv = substr($c, 0, $ivLen);
         $hmac = substr($c, $ivLen, $sha2len=32);
         $cipherText = substr($c, $ivLen+$sha2len);
-        return openssl_decrypt($cipherText, $method, $this->secretKey, $options=OPENSSL_RAW_DATA, $iv);
+
+        return openssl_decrypt($cipherText, $this->cipherMethod, $this->secretKey, $options=OPENSSL_RAW_DATA, $iv);
     }
 
     /**
