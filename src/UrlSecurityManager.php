@@ -97,9 +97,9 @@ class UrlSecurityManager
     public static function parse(?string $url = null): self
     {
         if($url === null) {
-            $port = static::getPortSubstring($_SERVER['SERVER_PORT']);
+            $port = static::getPortSubstring($_SERVER['REQUEST_SCHEME'], $_SERVER['SERVER_PORT']);
             $auth = static::getAuthSubstring($_SERVER['PHP_AUTH_USER'] ?? null, $_SERVER['PHP_AUTH_PW'] ?? null);
-            $url = "{$_SERVER['REQUEST_SCHEME']}://{$auth}{$_REQUEST['SERVER_NAME']}{$port}{$_SERVER['REQUEST_URI']}";
+            $url = "{$_SERVER['REQUEST_SCHEME']}://{$auth}{$_SERVER['SERVER_NAME']}{$port}{$_SERVER['REQUEST_URI']}";
         }
 
         $urlParsed = parse_url($url);

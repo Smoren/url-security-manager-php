@@ -19,6 +19,55 @@ class CommonTest extends \Codeception\Test\Unit
 {
     /**
      * @throws UrlSecurityManagerException
+     */
+    public function testBuilding()
+    {
+        $usm = UrlSecurityManager::create()
+            ->setScheme('https')
+            ->setHost('test.com')
+            ->setPort(8080)
+            ->setPath('/test/path')
+            ->setParams(['a' => 1, 'b' => 2]);
+
+        $this->assertSame($usm->stringify(), 'https://test.com:8080/test/path?a=1&b=2');
+
+        $usm
+            ->setSignParams('sign')
+            ->setSecretKey('q1w2e3r4t5y6u7')
+            ->sign();
+
+        $this->assertSame($usm->stringify(), 'https://test.com:8080/test/path?a=1&b=2&sign=89727a40dc08dc9f12d91b5d6e627c17');
+
+        $usm = UrlSecurityManager::create([
+            'scheme' => 'http',
+            'host' => 'test.com',
+            'port' => 8080,
+            'path' => '/test/path',
+            'params' => ['a' => 1, 'b' => 2],
+        ]);
+        $this->assertSame($usm->stringify(), 'http://test.com:8080/test/path?a=1&b=2');
+    }
+
+    /**
+     * @throws UrlSecurityManagerException
+     */
+    public function testServerRequest()
+    {
+        global $_SERVER;
+
+        $_SERVER = [
+            'SERVER_NAME' => 'localhost',
+            'SERVER_PORT' => 8081,
+            'REQUEST_SCHEME' => 'http',
+            'REQUEST_URI' => '/123/index.php?req=456',
+        ];
+
+        $usm = UrlSecurityManager::parse();
+        $this->assertSame($usm->stringify(), 'http://localhost:8081/123/index.php?req=456');
+    }
+
+    /**
+     * @throws UrlSecurityManagerException
      * @throws WrongSignatureException
      */
     public function testSigning()

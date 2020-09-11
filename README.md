@@ -97,3 +97,47 @@ $usmSender->decrypt();
 echo $usmSender->stringify();
 // http://localhost:8080/test/path?p3=3&p4=4&p1=1&p2=2
 ```
+
+##### Building URLs
+```php
+use Smoren\UrlSecurityManager\UrlSecurityManager;
+
+$usm = UrlSecurityManager::create()
+    ->setScheme('https')
+    ->setHost('test.com')
+    ->setPort(8080)
+    ->setPath('/test/path')
+    ->setParams(['a' => 1, 'b' => 2]);
+
+echo $usm->stringify();
+// https://test.com:8080/test/path?a=1&b=2
+
+$usm
+    ->setSignParams('sign')
+    ->setSecretKey('q1w2e3r4t5y6u7')
+    ->sign();
+
+echo $usm->stringify();
+// 'https://test.com:8080/test/path?a=1&b=2&sign=89727a40dc08dc9f12d91b5d6e627c17'
+
+$usm = UrlSecurityManager::create([
+    'scheme' => 'http',
+    'host' => 'test.com',
+    'port' => 8080,
+    'path' => '/test/path',
+    'params' => ['a' => 1, 'b' => 2],
+]);
+
+echo $usm->stringify();
+// 'http://test.com:8080/test/path?a=1&b=2&sign=89727a40dc08dc9f12d91b5d6e627c17'
+```
+
+##### Parse URL from server request
+```php
+use Smoren\UrlSecurityManager\UrlSecurityManager;
+
+$usm = UrlSecurityManager::parse();
+
+echo $usm->stringify();
+// you will see full URL of your current server request
+```
