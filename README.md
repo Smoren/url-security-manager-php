@@ -118,7 +118,7 @@ $usm
     ->sign();
 
 echo $usm->stringify();
-// 'https://test.com:8080/test/path?a=1&b=2&sign=89727a40dc08dc9f12d91b5d6e627c17'
+// https://test.com:8080/test/path?a=1&b=2&sign=89727a40dc08dc9f12d91b5d6e627c17
 
 $usm = UrlSecurityManager::create([
     'scheme' => 'http',
@@ -129,7 +129,7 @@ $usm = UrlSecurityManager::create([
 ]);
 
 echo $usm->stringify();
-// 'http://test.com:8080/test/path?a=1&b=2'
+// http://test.com:8080/test/path?a=1&b=2
 ```
 
 ##### Parse URL from server request
