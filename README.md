@@ -62,7 +62,7 @@ $secretKey = 'fvd76df89g7fdg89';
 
 // Let's encrypt url with our secret key to send some secret data to receiver:
 $usmSender = UrlSecurityManager::parse($inputUrl)
-    // encrypted string will be stored as value of query param "sign"
+    // encrypted string will be stored as value of query param "encrypted"
     // all query params will be encrypted
     ->setEncryptParams('encrypted') 
     ->setSecretKey($secretKey)
@@ -129,7 +129,7 @@ $usm = UrlSecurityManager::create([
 ]);
 
 echo $usm->stringify();
-// 'http://test.com:8080/test/path?a=1&b=2&sign=89727a40dc08dc9f12d91b5d6e627c17'
+// 'http://test.com:8080/test/path?a=1&b=2'
 ```
 
 ##### Parse URL from server request
