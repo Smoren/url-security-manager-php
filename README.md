@@ -24,7 +24,7 @@ $secretKey = 'fvd76df89g7fdg89';
 // Let's sign some url with our secret key to send signed request to receiver
 $usmSender = UrlSecurityManager::parse($inputUrl)
     // signature will be stored as value of query param "sign"
-    // only query aparms from array (2nd argument) will be signed
+    // only query params from array (2nd argument) will be signed
     ->setSignParams('sign', ['p1', 'p2', 'p3'])
     ->setSecretKey($secretKey) // giving secret key for signing
     ->sign(); // create signature
