@@ -2,18 +2,10 @@
 
 namespace app\tests\unit;
 
-use app\models\Address;
-use app\models\City;
-use app\models\Comment;
-use app\models\Place;
 use Smoren\UrlSecurityManager\Exceptions\DecryptException;
 use Smoren\UrlSecurityManager\Exceptions\UrlSecurityManagerException;
 use Smoren\UrlSecurityManager\Exceptions\WrongSignatureException;
 use Smoren\UrlSecurityManager\UrlSecurityManager;
-use Smoren\Yii2\QueryRelationManager\Base\QueryRelationManagerException;
-use Smoren\Yii2\QueryRelationManager\Yii2\QueryRelationManager;
-use yii\db\Query;
-use yii\helpers\ArrayHelper;
 
 class CommonTest extends \Codeception\Test\Unit
 {
