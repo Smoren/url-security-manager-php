@@ -528,7 +528,7 @@ class UrlSecurityManager
         $cipherText = openssl_encrypt($input, $this->cipherMethod, $this->secretKey, $options=OPENSSL_RAW_DATA, $iv);
         $hmac = hash_hmac('sha256', $cipherText, $this->secretKey, $as_binary=true);
 
-        return base64_encode($iv.$hmac.$cipherText);
+        return urlencode(base64_encode($iv.$hmac.$cipherText));
     }
 
     /**
@@ -538,7 +538,7 @@ class UrlSecurityManager
      */
     protected function decryptString(string $input): string
     {
-        $c = base64_decode($input);
+        $c = base64_decode(urldecode($input));
         $ivLen = openssl_cipher_iv_length($this->cipherMethod);
         $iv = substr($c, 0, $ivLen);
         $hmac = substr($c, $ivLen, $sha2len=32);
